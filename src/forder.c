@@ -867,16 +867,46 @@ static void csort(SEXP *x, int *o, int n)
      alloc_csort_otmp(n) is called from forder for either n=nrow if 1st column,
      or n=maxgrpn if onwards columns */
   for(i=0; i<n; i++) csort_otmp[i] = (x[i] == NA_STRING) ? NA_INTEGER : -TRUELENGTH(x[i]);
+  
+  Rprintf("csort_otmp's value:");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", csort_otmp[iii]);
+  }
+  Rprintf("\n");
+  
+  for(i=0; i<n; i++) csort_otmp[i] = (x[i] == NA_STRING) ? NA_INTEGER : -TRUELENGTH(ENC2UTF8(x[i]));
+  
+  Rprintf("csort_otmp's value:");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", csort_otmp[iii]);
+  }
+  Rprintf("\n");
+  
+  Rprintf("870 o's value:\n");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", o[iii]);
+  }
+  Rprintf("\n");
   if (nalast == 0 && n == 2) {                        // special case for nalast==0. n==1 is handled inside forder. at least 1 will be NA here
     if (o[0] == -1) for (i=0; i<n; i++) o[i] = i+1;    // else use o from caller directly (not 1st column)
     for (int i=0; i<n; i++) if (csort_otmp[i] == NA_INTEGER) o[i] = 0;
     push(1); push(1);
     return;
   }
+  Rprintf("881 o's value:\n");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", o[iii]);
+  }
+  Rprintf("\n");
   if (n < N_SMALL && nalast != 0) {                                    // TO DO: calibrate() N_SMALL=200
     if (o[0] == -1) for (i=0; i<n; i++) o[i] = i+1;    // else use o from caller directly (not 1st column)
     for (int i=0; i<n; i++) csort_otmp[i] = icheck(csort_otmp[i]);
     iinsert(csort_otmp, o, n);
+    Rprintf("890 o's value:\n");
+    for (int iii = 0; iii < n; iii++) {
+      Rprintf("%d, ", o[iii]);
+    }
+    Rprintf("\n");
   } else {
     setRange(csort_otmp, n);
     if (range == NA_INTEGER) Error("Internal error. csort's otmp contains all-NA");
@@ -884,6 +914,11 @@ static void csort(SEXP *x, int *o, int n)
     if (range <= N_RANGE) // && range<n)            // TO DO: calibrate(). radix was faster (9.2s "range<=10000" instead of 11.6s
       icount(csort_otmp, target, n);       // "range<=N_RANGE && range<n") for run(7) where range=N_RANGE n=10000000
     else iradix(csort_otmp, target, n);
+    Rprintf("901 o's value:\n");
+    for (int iii = 0; iii < n; iii++) {
+      Rprintf("%d, ", o[iii]);
+    }
+    Rprintf("\n");
   }
   // all i* push onto stack. Using their counts may be faster here than thrashing SEXP fetches over several passes as cgroup does
   // (but cgroup needs that to keep orginal order, and cgroup saves the sort in csort_pre).
@@ -899,7 +934,7 @@ static void csort_pre(SEXP *x, int n)
   // savetl_init() is called once at the start of forder
   old_un = ustr_n;
   for(i=0; i<n; i++) {
-    s = x[i];
+    s = ENC2UTF8(x[i]);
     if (TRUELENGTH(s)<0) continue;   // this case first as it's the most frequent. Already in ustr, this negative is its ordering.
     if (TRUELENGTH(s)>0) {  // Save any of R's own usage of tl (assumed positive, so we can both count and save in one scan), to restore
       savetl(s);          // afterwards. From R 2.14.0, tl is initialized to 0, prior to that it was random so this step saved too much.
@@ -1014,6 +1049,10 @@ static int csorted(SEXP *x, int n)                          // order=1 is ascend
     if (j != n) return(0);                                  // any NAs ? return 0 = unsorted and leave it to sort routines to replace o's with 0's
   }                                                         // no NAs  ? continue to check the rest of isorted - the same routine as usual
   if (n<=1) { push(n); return(1); }
+  for (int iii = 1; iii < n; iii++) {
+    Rprintf("%s vs %s, the former larger? %d\n", translateChar(x[iii - 1]), translateChar(x[iii]), StrCmp2(x[iii - 1], x[iii]));
+  }
+ 
   if (StrCmp2(x[1],x[0])<0) {
     i = 2;
     while (i<n && StrCmp2(x[i],x[i-1])<0) i++;
@@ -1082,6 +1121,12 @@ static void dsort(double *x, int *o, int n)
   }
 }
 
+void shrek_print(SEXP *tmp_value, int n) {
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("the %d's value is %s\n", iii, translateChar(tmp_value[iii]));
+  }
+}
+
 SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP naArg)
 // sortStr TRUE from setkey, FALSE from by=
 {
@@ -1127,6 +1172,7 @@ SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP 
   o[0] = -1;                                  // so [i|c|d]sort know they can populate o directly with no working memory needed to reorder existing order
                         // had to repace this from '0' to '-1' because 'nalast = 0' replace 'o[.]' with 0 values.
   xd = DATAPTR(x);
+  
   stackgrps = length(by)>1 || LOGICAL(retGrp)[0];
   savetl_init();   // from now on use Error not error.
 
@@ -1149,6 +1195,15 @@ SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP 
   default :
     Error("First column being ordered is type '%s', not yet supported", type2char(TYPEOF(x)));
   }
+ 
+
+  shrek_print(xd, n);
+  Rprintf("o's value:\n");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", o[iii]);
+  }
+  Rprintf("\n");
+  Rprintf("isSorted tmp == %d\n", tmp);
   if (tmp) {                                  // -1 or 1. NEW: or -2 in case of nalast == 0 and all NAs
     if (tmp == 1) {                         // same as expected in 'order' (1 = increasing, -1 = decreasing)
       isSorted = TRUE;
@@ -1168,8 +1223,15 @@ SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP 
     case REALSXP :
       dsort(xd, o, n); break;
     case STRSXP :
+      Rprintf("sortStr %d\n", sortStr);
       if (sortStr) { csort_pre(xd, n); alloc_csort_otmp(n); csort(xd, o, n); }
       else cgroup(xd, o, n);
+      shrek_print(xd, n);
+      Rprintf("o's value:\n");
+      for (int iii = 0; iii < n; iii++) {
+        Rprintf("%d, ", o[iii]);
+      }
+      Rprintf("\n");
       break;
     default :
       Error("Internal error: previous default should have caught unsupported type");
@@ -1301,10 +1363,12 @@ SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP 
   savetl_end();
   free(ustr);                ustr=NULL;          ustr_alloc=0;
 
+  Rprintf("1321 isSorted %d\n", isSorted);
   if (isSorted) {
     UNPROTECT(1);  // The existing o vector, which we may save in future, if in future we only create when isSorted becomes FALSE
     ans = PROTECT(allocVector(INTSXP, 0));  // Can't attach attributes to NULL
   }
+  Rprintf("LOGICAL(retGrp)[0] %d\n", LOGICAL(retGrp)[0]);
   if (LOGICAL(retGrp)[0]) {
     ngrp = gsngrp[flip];
     setAttrib(ans, sym_starts, x = allocVector(INTSXP, ngrp));
@@ -1330,6 +1394,11 @@ SEXP forder(SEXP DT, SEXP by, SEXP retGrp, SEXP sortStrArg, SEXP orderArg, SEXP 
   free(cradix_xtmp);         cradix_xtmp=NULL;   cradix_xtmp_alloc=0;   // TO DO: use xtmp already got
 
   UNPROTECT(1);
+  Rprintf("o's value:\n");
+  for (int iii = 0; iii < n; iii++) {
+    Rprintf("%d, ", o[iii]);
+  }
+  Rprintf("\n");
   return( ans );
 }
 
